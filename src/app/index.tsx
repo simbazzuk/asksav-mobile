@@ -77,16 +77,28 @@ export default function HomeScreen() {
   const [marketData,setMarketData]=useState<any>(null);
   const [marketError,setMarketError]=useState<string|null>(null);
   const [collectionSaved,setCollectionSaved]=useState(false);
-  // AskSAV Mobile v4.9.3.13 - recover a foreground analysis interrupted by iOS lock/background.
+  // AskSAV Mobile v4.9.4.2.2 - explicit recovery after iOS lock/background.
   const analysisInterruptedRef=useRef(false);
   const analysisRetryRef=useRef(false);
   const analysisAttemptRef=useRef(0);
   const pendingAnalysisRef=useRef<{imageUri:string;context:string}|null>(null);
+  const pendingRecoveryPromptRef=useRef(false);
   useEffect(()=>onAuthStateChanged(auth,setUser),[]);
   useEffect(()=>{
     const subscription=AppState.addEventListener("change",(nextState)=>{
       if(nextState!=="active" && analysing){
         analysisInterruptedRef.current=true;
+      }
+      if(nextState==="active" && pendingRecoveryPromptRef.current && pendingAnalysisRef.current){
+        pendingRecoveryPromptRef.current=false;
+        setTimeout(()=>Alert.alert(
+          "Analysis interrupted",
+          "AskSAV was backgrounded while the analysis was running. Your photo is still here. Retry the analysis when you are ready.",
+          [
+            {text:"Not now",style:"cancel"},
+            {text:"Retry analysis",onPress:()=>{analysisRetryRef.current=true;analysisInterruptedRef.current=false;void usePhoto(true);}}
+          ]
+        ),250);
       }
     });
     return()=>subscription.remove();
@@ -167,13 +179,24 @@ export default function HomeScreen() {
       } catch(e) { console.warn("[AskSAV mobile] History save failed",e); }
     } catch(e:any) {
       if(attempt!==analysisAttemptRef.current)return;
-      if(analysisInterruptedRef.current && !analysisRetryRef.current && pendingAnalysisRef.current){
-        analysisRetryRef.current=true;
-        analysisInterruptedRef.current=false;
-        setAnalysisStage("Connection interrupted - retrying");
-        setAnalysisProgress(p=>Math.max(p,28));
-        await new Promise(resolve=>setTimeout(resolve,350));
-        return usePhoto(true);
+      if(analysisInterruptedRef.current && pendingAnalysisRef.current){
+        // Do not automatically submit a second analysis. Preserve the pending
+        // photo/context and let the user explicitly decide whether to retry.
+        setAnalysisStage("Analysis interrupted");
+        if(AppState.currentState==="active"){
+          analysisInterruptedRef.current=false;
+          Alert.alert(
+            "Analysis interrupted",
+            "AskSAV was backgrounded while the analysis was running. Your photo is still here. Retry the analysis when you are ready.",
+            [
+              {text:"Not now",style:"cancel"},
+              {text:"Retry analysis",onPress:()=>{analysisRetryRef.current=true;void usePhoto(true);}}
+            ]
+          );
+        }else{
+          pendingRecoveryPromptRef.current=true;
+        }
+        return;
       }
       pendingAnalysisRef.current=null;
       const message=e?.message||"AskSAV could not analyse this photo.";
