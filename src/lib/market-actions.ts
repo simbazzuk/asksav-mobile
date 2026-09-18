@@ -1,6 +1,6 @@
-// AskSAV Mobile v4.9.3.13 - product-specific Market Action destinations
+// AskSAV Mobile v4.9.4.1 - multi-source Market Action destinations
 export type MarketAction={
-  id:"sell"|"buy"|"compare"|"recycle";
+  id:"sell"|"buy"|"google-shopping"|"amazon"|"etsy"|"recycle";
   title:string;
   subtitle:string;
   icon:string;
@@ -50,16 +50,17 @@ export function buildMarketSearchQuery(itemName:string,category:string,identity?
  * Partner routing is intentionally isolated in this file.
  * External searches are discovery destinations, not evidence that AskSAV has
  * incorporated those listings into its server-side Market Intelligence valuation.
- * Approved affiliate/deep-link templates can replace these URLs later.
  */
 export function getMarketActions(itemName:string,category:string,identity?:MarketActionIdentity):MarketAction[]{
   const item=buildMarketSearchQuery(itemName,category,identity);
   const q=encode(item);
   const electrical=isElectrical(category||"",item);
   return [
-    {id:"sell",title:"Sell this item",subtitle:"Search eBay using this product identity",icon:"pricetag-outline",url:"https://www.ebay.co.uk/sch/i.html?_nkw="+q},
-    {id:"buy",title:"Buy similar",subtitle:"See closely matched items on eBay",icon:"bag-handle-outline",url:"https://www.ebay.co.uk/sch/i.html?_nkw="+q},
-    {id:"compare",title:"Compare market",subtitle:"Check broader current shopping results",icon:"search-outline",url:"https://www.google.com/search?tbm=shop&q="+q},
+    {id:"sell",title:"Sell this item",subtitle:"Search eBay UK using this product identity",icon:"pricetag-outline",url:"https://www.ebay.co.uk/sch/i.html?_nkw="+q},
+    {id:"buy",title:"Buy similar",subtitle:"See closely matched items on eBay UK",icon:"bag-handle-outline",url:"https://www.ebay.co.uk/sch/i.html?_nkw="+q},
+    {id:"google-shopping",title:"Google Shopping",subtitle:"Compare products and retailers across the wider market",icon:"search-outline",url:"https://www.google.com/search?tbm=shop&q="+q},
+    {id:"amazon",title:"Amazon UK",subtitle:"Search Amazon UK for matching or comparable products",icon:"storefront-outline",url:"https://www.amazon.co.uk/s?k="+q},
+    {id:"etsy",title:"Etsy UK",subtitle:"Compare vintage, handmade and collectable listings",icon:"pricetag-outline",url:"https://www.etsy.com/uk/search?q="+q},
     {id:"recycle",title:electrical?"Recycle / trade in":"Reuse / recycle",subtitle:electrical?"Find an electrical reuse or recycling route":"Find responsible reuse and recycling options",icon:"leaf-outline",url:electrical?"https://www.recycleyourelectricals.org.uk/":"https://www.google.com/search?q="+encode("UK donate recycle "+item)}
   ];
 }
