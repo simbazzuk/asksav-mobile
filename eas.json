@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 16.18.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ASKSAV_API_BASE": "https://asksav.ai"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ASKSAV_API_BASE": "https://asksav.ai"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ASKSAV_API_BASE": "https://asksav.ai"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

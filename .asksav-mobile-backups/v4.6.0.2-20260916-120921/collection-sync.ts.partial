@@ -1,0 +1,49 @@
+// AskSAV Mobile v4.6.0 - account-backed Collection sync
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { collection, deleteDoc, doc, getDocs, getFirestore, setDoc } from "firebase/firestore";
+import { auth } from "./firebase";
+
+export const COLLECTION_KEY="asksav.mobile.collection.v1";
+export type SyncState="local"|"syncing"|"synced"|"offline";
+
+function clean<T>(value:T):T{return JSON.parse(JSON.stringify(value));}
+function stamp(item:any){return String(item?.updatedAt||item?.marketUpdatedAt||item?.savedAt||"");}
+
+export async function readLocalCollection():Promise<any[]>{
+ const raw=await AsyncStorage.getItem(COLLECTION_KEY);
+ try{return raw?JSON.parse(raw):[];}catch{return [];}
+}
+export async function writeLocalCollection(items:any[]){await AsyncStorage.setItem(COLLECTION_KEY,JSON.stringify(items));}
+
+export async function syncCollection():Promise<{items:any[];state:SyncState}>{
+ const local=await readLocalCollection();
+ const user=auth.currentUser;
+ if(!user)return {items:local,state:"local"};
+ try{
+  const db=getFirestore(auth.app);
+  const ref=collection(db,"users",user.uid,"asksavCollection");
+  const snap=await getDocs(ref);
+  const cloud=snap.docs.map(x=>x.data());
+  const merged=new Map<string,any>();
+  for(const x of [...cloud,...local]){
+   if(!x?.id)continue;
+   const prev=merged.get(x.id);
+   if(!prev||stamp(x)>=stamp(prev))merged.set(x.id,x);
+  }
+  const items=[...merged.values()].sort((a,b)=>String(b.savedAt||"").localeCompare(String(a.savedAt||"")));
+  await Promise.all(items.map(x=>setDoc(doc(ref,x.id),clean({...x,updatedAt:x.updatedAt||x.marketUpdatedAt||x.savedAt||new Date().toISOString()}),{merge:true})));
+  await writeLocalCollection(items);
+  return {items,state:"synced"};
+ }catch{return {items:local,state:"offline"};}
+}
+export async function saveCollectionItem(item:any){
+ const next={...item,updatedAt:new Date().toISOString()};
+ const items=await readLocalCollection();
+ await writeLocalCollection(items.map(x=>x.id===next.id?next:x));
+ const user=auth.currentUser;if(!user)return;
+ try{const db=getFirestore(auth.app);await setDoc(doc(db,"users",user.uid,"asksavCollection",next.id),clean(next),{merge:true});}catch{}
+}
+export async function removeCloudCollectionItem(id:string){
+ const user=auth.currentUser;if(!user)return;
+ try{const db=getFirestore(auth.app);await deleteDoc(doc(db,"users",user.uid,"asksavCollection",id));}catch{}
+}

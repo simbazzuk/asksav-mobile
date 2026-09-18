@@ -1,0 +1,16 @@
+// AskSAV Mobile v4.0.4
+import { useEffect,useState } from "react";
+import { Image,SafeAreaView,ScrollView,StyleSheet,Text,TouchableOpacity,View } from "react-native";
+import { router,useLocalSearchParams } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+function cleanText(value:any){
+ if(value===undefined||value===null)return "";
+ return String(value)
+   .replace(/\u00C3\u201A\u00C2\u00A3/g,"\u00A3")
+   .replace(/\u00C3\u201A\u00C2/g,"")
+   .replace(/\u00C2\u00A3/g,"\u00A3")
+   .replace(/\u00C2\u00B7/g,"\u00B7")
+   .replace(/\u00C2/g,"");
+}
+export default function HistoryDetail(){const {id}=useLocalSearchParams<{id:string}>();const [x,setX]=useState<any>();useEffect(()=>{AsyncStorage.getItem("asksav.mobile.history.v1").then(r=>setX((r?JSON.parse(r):[]).find((v:any)=>v.id===id)||null))},[id]);if(!x)return <SafeAreaView style={s.safe}><View style={s.page}><TouchableOpacity onPress={()=>router.back()}><Text style={s.back}>â€¹ History</Text></TouchableOpacity><Text style={s.title}>{x===null?"Item unavailable":"Loading..."}</Text></View></SafeAreaView>;const a=x.analysis||{},m=x.market;return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.page}><TouchableOpacity onPress={()=>router.back()}><Text style={s.back}>â€¹ History</Text></TouchableOpacity><Text style={s.label}>SAVED ANALYSIS</Text><Text style={s.title}>{cleanText(x.name)||"Item identified"}</Text>{x.imageUri?<Image source={{uri:x.imageUri}} style={s.image} resizeMode="contain"/>:null}<View style={s.card}><Text style={s.h}>What AskSAV saw</Text><Text style={s.k}>CATEGORY</Text><Text style={s.v}>{cleanText(x.category)||"-"}</Text><Text style={s.k}>CONDITION</Text><Text style={s.v}>{cleanText(x.condition)||"-"}</Text></View>{m?<View style={s.market}><Text style={s.label}>MARKET INTELLIGENCE</Text><Text style={s.h}>{m.low!=null&&m.high!=null?`Â£${m.low} - Â£${m.high}`:"Saved market evidence"}</Text>{m.suggested!=null?<Text style={s.v}>Suggested: Â£{m.suggested}</Text>:null}{m.evidence_summary?<Text style={s.copy}>{cleanText(m.evidence_summary)}</Text>:null}</View>:<View style={s.card}><Text style={s.h}>No saved Market Intelligence</Text><Text style={s.copy}>Market evidence was not generated for this analysis.</Text></View>}</ScrollView></SafeAreaView>}
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:"#f4fbf9"},page:{padding:22,paddingBottom:40},back:{color:"#087f72",fontSize:17,fontWeight:"900",marginTop:12,marginBottom:20},label:{color:"#087f72",fontSize:11,fontWeight:"900",letterSpacing:1},title:{color:"#062f4f",fontSize:34,fontWeight:"900",marginTop:5,marginBottom:16},image:{width:"100%",height:230,backgroundColor:"#fff",borderRadius:20,marginBottom:12},card:{backgroundColor:"#fff",borderWidth:1,borderColor:"#cfe8e2",borderRadius:20,padding:18,marginBottom:12},market:{backgroundColor:"#effaf6",borderWidth:1,borderColor:"#b9ddd5",borderRadius:20,padding:18},h:{color:"#062f4f",fontSize:21,fontWeight:"900",marginBottom:10},k:{color:"#789097",fontSize:11,fontWeight:"900",marginTop:8},v:{color:"#173f51",fontSize:16,fontWeight:"900",marginTop:3},copy:{color:"#557681",fontSize:14,lineHeight:21,marginTop:8}});
