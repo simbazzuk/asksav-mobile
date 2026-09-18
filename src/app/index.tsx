@@ -1,5 +1,5 @@
 // AskSAV Mobile v4.2.0 - My Collection
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Share, DynamicColorIOS } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -8,7 +8,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { analyseAskSAVImage, marketAskSAVAnalysis } from "../lib/asksav-api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Linking } from "react-native";
+import { AppState, Linking } from "react-native";
 import { getMarketActions, MarketAction } from "../lib/market-actions";
 import { saveCollectionItem } from "../lib/collection-sync";
 import AskSAVPageHeader from "../components/AskSAVPageHeader";
@@ -77,7 +77,20 @@ export default function HomeScreen() {
   const [marketData,setMarketData]=useState<any>(null);
   const [marketError,setMarketError]=useState<string|null>(null);
   const [collectionSaved,setCollectionSaved]=useState(false);
+  // AskSAV Mobile v4.9.3.13 - recover a foreground analysis interrupted by iOS lock/background.
+  const analysisInterruptedRef=useRef(false);
+  const analysisRetryRef=useRef(false);
+  const analysisAttemptRef=useRef(0);
+  const pendingAnalysisRef=useRef<{imageUri:string;context:string}|null>(null);
   useEffect(()=>onAuthStateChanged(auth,setUser),[]);
+  useEffect(()=>{
+    const subscription=AppState.addEventListener("change",(nextState)=>{
+      if(nextState!=="active" && analysing){
+        analysisInterruptedRef.current=true;
+      }
+    });
+    return()=>subscription.remove();
+  },[analysing]);
   useEffect(()=>{
     if(!analysing){setAnalysisProgress(0);setAnalysisStage("");return;}
     setAnalysisProgress(12);setAnalysisStage("Preparing image");
@@ -105,13 +118,25 @@ export default function HomeScreen() {
     return()=>timers.forEach(clearTimeout);
   },[marketLoading]);
 
-  async function usePhoto() {
+  async function usePhoto(resume=false) {
     if (!imageUri) return;
     if (!user) { Alert.alert("Sign in required","Open Account and sign in before analysing an item."); return; }
     if (!user.emailVerified) { Alert.alert("Verify your email","Verify your AskSAV email address before analysing an item."); return; }
+    const attempt=++analysisAttemptRef.current;
+    const request={imageUri,context:itemContext};
+    pendingAnalysisRef.current=request;
+    if(!resume){
+      analysisInterruptedRef.current=false;
+      analysisRetryRef.current=false;
+    }
     try {
       setAnalysing(true); setAnalysis(null);
-      const result=await analyseAskSAVImage(user,imageUri,itemContext);
+      if(resume){setAnalysisStage("Resuming analysis");setAnalysisProgress(p=>Math.max(p,28));}
+      const result=await analyseAskSAVImage(user,request.imageUri,request.context);
+      if(attempt!==analysisAttemptRef.current)return;
+      pendingAnalysisRef.current=null;
+      analysisInterruptedRef.current=false;
+      analysisRetryRef.current=false;
       // AskSAV Mobile v0.3.2 diagnostic: temporary payload logging.
       // Do not log Firebase tokens or credentials.
       console.log("[AskSAV mobile analysis]", JSON.stringify(result, null, 2));
@@ -135,15 +160,27 @@ export default function HomeScreen() {
           name:savedName,
           category:first(identification?.category,result?.category),
           condition:first(result?.condition?.grade,result?.condition?.rating,result?.condition?.condition,result?.condition?.summary),
-          imageUri,
+          imageUri:request.imageUri,
           analysis:result
         };
         await AsyncStorage.setItem("asksav.mobile.history.v1",JSON.stringify([entry,...previous].slice(0,50)));
       } catch(e) { console.warn("[AskSAV mobile] History save failed",e); }
     } catch(e:any) {
+      if(attempt!==analysisAttemptRef.current)return;
+      if(analysisInterruptedRef.current && !analysisRetryRef.current && pendingAnalysisRef.current){
+        analysisRetryRef.current=true;
+        analysisInterruptedRef.current=false;
+        setAnalysisStage("Connection interrupted - retrying");
+        setAnalysisProgress(p=>Math.max(p,28));
+        await new Promise(resolve=>setTimeout(resolve,350));
+        return usePhoto(true);
+      }
+      pendingAnalysisRef.current=null;
       const message=e?.message||"AskSAV could not analyse this photo.";
       Alert.alert("Analysis failed",message.includes("(413)") ? "This image is still too large to upload. Try retaking the photo or choosing a smaller image." : message);
-    } finally { setAnalysing(false); }
+    } finally {
+      if(attempt===analysisAttemptRef.current)setAnalysing(false);
+    }
   }
 
   async function takePhoto() {
@@ -353,7 +390,7 @@ export default function HomeScreen() {
 
           {!analysis ? <>
           {analysing ? <ProgressPanel title="Analysing your item" stage={analysisStage} progress={analysisProgress}/> : null}
-          <TouchableOpacity style={s.primary} onPress={usePhoto} disabled={analysing}>
+          <TouchableOpacity style={s.primary} onPress={()=>usePhoto()} disabled={analysing}>
             {analysing ? <ActivityIndicator color={DynamicColorIOS({light:"#fff",dark:"#10282d"})}/> : <Ionicons name="sparkles" size={20} color={DynamicColorIOS({light:"#fff",dark:"#10282d"})}/>}
             <Text style={s.primaryText}>{analysing ? "Analysing..." : "Use this photo"}</Text>
           </TouchableOpacity></> : <>
@@ -401,7 +438,7 @@ export default function HomeScreen() {
               <Text style={s.marketActionsTitle}>Take the next step</Text>
               <Text style={s.marketActionsCopy}>Explore places to sell this item, find similar items or choose a reuse and recycling route.</Text>
               <View style={s.marketActionsGrid}>
-                {getMarketActions(bestIdentification(analysis,itemName),category).map((action:MarketAction)=><TouchableOpacity key={action.id} style={s.marketAction} onPress={async()=>{try{const ok=await Linking.canOpenURL(action.url);if(ok)await Linking.openURL(action.url);else Alert.alert("Link unavailable","This destination could not be opened.");}catch{Alert.alert("Link unavailable","This destination could not be opened.");}}}>
+                {getMarketActions(bestIdentification(analysis,itemName),category,analysis?.identification).map((action:MarketAction)=><TouchableOpacity key={action.id} style={s.marketAction} onPress={async()=>{try{const ok=await Linking.canOpenURL(action.url);if(ok)await Linking.openURL(action.url);else Alert.alert("Link unavailable","This destination could not be opened.");}catch{Alert.alert("Link unavailable","This destination could not be opened.");}}}>
                   <View style={s.marketActionIcon}><Ionicons name={action.icon as any} size={20} color="#087f72"/></View>
                   <View style={{flex:1}}><Text style={s.marketActionTitle}>{action.title}</Text><Text style={s.marketActionCopy}>{action.subtitle}</Text></View>
                   <Ionicons name="open-outline" size={17} color={DynamicColorIOS({light:"#789097",dark:"#c7d9da"})}/>

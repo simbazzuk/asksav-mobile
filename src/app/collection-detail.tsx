@@ -60,7 +60,7 @@ export default function CollectionDetail(){
  const notes=first(a?.condition?.description,a?.condition?.notes);
  const evidence=first(market?.evidence_summary);
  const range=typeof market?.low==="number"||typeof market?.high==="number"?[typeof market?.low==="number"?symbol(market?.currency)+Math.round(market.low).toLocaleString("en-GB"):"",typeof market?.high==="number"?symbol(market?.currency)+Math.round(market.high).toLocaleString("en-GB"):""].filter(Boolean).join(" - "):"";
- const actions=getMarketActions(item.name||"item",item.category||"");
+ const actions=getMarketActions(item.name||"item",item.category||"",item.analysis?.identification);
 
  return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.page}>
   <TouchableOpacity style={s.back} onPress={()=>router.back()}><Ionicons name="chevron-back" size={19} color="#087f72"/><Text style={s.backLabel}>Collection</Text></TouchableOpacity>
